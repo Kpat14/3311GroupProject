@@ -4,7 +4,9 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
+import java.net.URI;
 import java.net.URLDecoder;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -51,4 +53,100 @@ class Utils {
 	    
         return buf.toString();
         }
+    
+    public void handle(HttpExchange request) throws IOException {
+		// TODO Auto-generated method stub
+		
+        try {
+            if (request.getRequestMethod().equals("addActor")) {
+                //addActor(request);
+                System.out.println("PUT");
+            } else if(request.getRequestMethod().equals("addMovie")) {
+            	System.out.println("PUT");
+            	//addMovie(request);
+            } else if(request.getRequestMethod().equals("addRelationship")) {
+            	System.out.println("PUT");
+            	//addRelationship(request);				
+            } else if(request.getRequestMethod().equals("getActor")) {
+            	System.out.println("GET");
+            	//getActor(request);		
+            }
+            else if(request.getRequestMethod().equals("getMovie")) {
+            	System.out.println("GET");
+            	//getMovie(request);		
+            }
+            else if(request.getRequestMethod().equals("hasRelationship")) {
+            	System.out.println("GET");
+            	//hasRelationship(request);		
+            }
+            else if(request.getRequestMethod().equals("computeBaconNumber")) {
+            	System.out.println("GET");
+            	//computeBacon(request);		
+            }
+            else {
+            	System.out.println("Unrecognized command");
+            	//sendResponse(request, "Unimplemented method\n", 501);
+            }
+        } catch (Exception e) {
+        	e.printStackTrace();
+        	//sendResponse(request, "Server error\n", 500);
+        	System.out.println("Server error");
+        }
+		
+	}
+    
+//    private void sendResponse(HttpExchange request, String data, int restCode) throws IOException {
+//		request.sendResponseHeaders(restCode, data.length());
+//        OutputStream os = request.getResponseBody();
+//        os.write(data.getBytes());
+//        os.close();
+//	}
+    
+    private void handleGet(HttpExchange request) throws IOException {
+    	
+        URI uri = request.getRequestURI();
+        String query = uri.getQuery();
+        System.out.println(query);
+        Map<String, String> queryParam = splitQuery(query);
+        System.out.println(queryParam);
+        long first = Long.parseLong(queryParam.get("firstNumber"));
+        long second = Long.parseLong(queryParam.get("secondNumber"));
+        
+        // add code for incorrect parameters
+
+        /* TODO: Implement the math logic */
+        long answer = first + second;
+        System.out.println(first+","+second+","+answer);
+        String response = Long.toString(answer) + "\n";
+        //sendResponse(request, response, 200);
+    }
+//  private void addMovie(HttpExchange request) throws IOException {
+//	
+//}
+    
+//  private void addActor(HttpExchange request) throws IOException {
+//	
+//}
+    
+//  private void addRelationship(HttpExchange request) throws IOException {
+//	
+//}
+    
+//  private void getMovie(HttpExchange request) throws IOException {
+//	
+//}
+    
+//  private void getActor(HttpExchange request) throws IOException {
+//	
+//}
+    
+//  private void hasRelationship(HttpExchange request) throws IOException {
+//	
+//}
+    
+//  private void computeBaconNumber(HttpExchange request) throws IOException {
+//	
+//}
+
+    
 }
