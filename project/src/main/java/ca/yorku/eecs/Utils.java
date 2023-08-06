@@ -35,9 +35,6 @@ class Utils {
         // Create an HTTP server listening on all available network interfaces on the specified port
         HttpServer server = HttpServer.create(new InetSocketAddress("0.0.0.0", PORT), 0);
 
-        server.createContext("/api/v1/addActor", new MyHandler());
-        server.createContext("/api/v1/addMovie", new MyHandler());
-        server.createContext("/api/v1/addRelationship", new MyHandler());
 
         // Start the HTTP server
         server.start();
@@ -59,8 +56,8 @@ class Utils {
             if (name == null || name.isEmpty() || actorId == null || actorId.isEmpty()) {
                 sendResponseCode(request, 400);
             } else {
-                String checkQuery = "MATCH (a:Actor {name: $name}) RETURN a";
-                Result result = session.run(checkQuery, Values.parameters("name", name));
+            	String checkQuery = "MATCH (a:Actor {actorId: $actorId}) RETURN a";
+    			Result result = session.run(checkQuery, Values.parameters("actorId", actorId));
                 if (result != null && result.hasNext()) {
                     sendResponseCode(request, 400);
                 } else {
@@ -94,8 +91,8 @@ class Utils {
             if (name == null || name.isEmpty() || movieId == null || movieId.isEmpty()) {
                 sendResponseCode(request, 400);
             } else {
-                String checkQuery = "MATCH (m:Movie {name: $name}) RETURN m";
-                Result result = session.run(checkQuery, Values.parameters("name", name));
+            	String checkQuery = "MATCH (m:Movie {movieId: $movieId}) RETURN m";
+    			Result result = session.run(checkQuery, Values.parameters("movieId", movieId));
                 if (result != null && result.hasNext()) {
                     sendResponseCode(request, 400);
                 } else {
@@ -151,12 +148,59 @@ class Utils {
 
 
 
+    /*
+    public static void getActor(HttpExchange request, Session session) throws IOException {
+        String getActorQuery = "MATCH (a:Actor {actorId: $actorId})-[r:ACTED_IN]->(m:Movie) RETURN a.name AS name, m.movieId AS movieId";
 
+        try {
+            // Extract the query parameters from the request URI
+            String query = request.getRequestURI().getQuery();
+            Map<String, String> queryParams = splitQuery(query);
+
+            // Get the actorId from the query parameters
+            String actorId = queryParams.get("actorId");
+
+            if (actorId == null || actorId.isEmpty()) {
+                sendResponseCode(request, 400);
+            } else {
+                // Execute the query to retrieve the actor's name and movies
+                Result result = session.run(getActorQuery, Values.parameters("actorId", actorId));
+                if (result != null && result.hasNext()) {
+                    // Convert the result to a JSON representation
+                    JSONObject responseJson = new JSONObject();
+                    JSONArray moviesArray = new JSONArray();
+                    String actorName = null;
+
+                    while (result.hasNext()) {
+                        Record record = result.next();
+                        actorName = record.get("name").asString();
+                        String movieId = record.get("movieId").asString();
+                        moviesArray.put(movieId);
+                    }
+
+                    responseJson.put("actorId", actorId);
+                    responseJson.put("name", actorName);
+                    responseJson.put("movies", moviesArray);
+
+                    // Send the JSON response
+                    String response = responseJson.toString();
+                    sendJsonResponse(request, 200, response);
+                } else {
+                    // Actor with the given actorId not found
+                    // Return 404 Not Found status code
+                    sendResponseCode(request, 404);
+                }
+            }
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+            sendResponseCode(request, 500);
+        }
+    }
+    */
 
 
 
 	 
-	static class MyHandler implements HttpHandler {
 	    public void handle(HttpExchange request) throws IOException {
 	        String uri = "bolt://localhost:7687";
 	        String username = "neo4j";
@@ -203,7 +247,7 @@ class Utils {
 	            System.out.println("Server error");
 	        }
 	    }
-	}
+	
 
 	
   
