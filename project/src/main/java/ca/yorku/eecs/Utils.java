@@ -124,21 +124,38 @@ class Utils {
             if (actorId == null || actorId.isEmpty() || movieId == null || movieId.isEmpty()) {
                 sendResponseCode(request, 400);
             } else {
-                String checkQuery = "MATCH (a:Actor {actorId: $actorId})-[:ACTED_IN]->(m:Movie {movieId: $movieId}) "
-                        + "RETURN COUNT(*) AS count";
-                Result result = session.run(checkQuery, Values.parameters("actorId", actorId, "movieId", movieId));
-                Record record = result.single();
-                Value countValue = record.get("count");
-                int count = (countValue != null && !countValue.isNull()) ? countValue.asInt() : 0;
-                if (count > 0) {
-                	System.out.println(count);
-                    sendResponseCode(request, 400);
-                } else if (count == 0){
-                    try {
-                        session.run(relationQuery, Values.parameters("actorId", actorId, "movieId", movieId));
-                        sendResponseCode(request, 200);
-                    } catch (Exception e) {
-                        sendResponseCode(request, 500);
+                String actorExistsQuery = "MATCH (a:Actor {actorId: $actorId}) RETURN COUNT(a) AS countActor";
+                String movieExistsQuery = "MATCH (m:Movie {movieId: $movieId}) RETURN COUNT(m) AS countMovie";
+
+                Result actorResult = session.run(actorExistsQuery, Values.parameters("actorId", actorId));
+                Record actorRecord = actorResult.single();
+                int actorCount = actorRecord.get("countActor").asInt();
+
+                Result movieResult = session.run(movieExistsQuery, Values.parameters("movieId", movieId));
+                Record movieRecord = movieResult.single();
+                int movieCount = movieRecord.get("countMovie").asInt();
+
+                if (actorCount == 0 || movieCount == 0) {
+                    sendResponseCode(request, 404);
+                } else {
+                    String checkQuery = "MATCH (a:Actor {actorId: $actorId})-[:ACTED_IN]->(m:Movie {movieId: $movieId}) "
+                            + "RETURN COUNT(*) AS count";
+
+                    Result result = session.run(checkQuery, Values.parameters("actorId", actorId, "movieId", movieId));
+                    Record record = result.single();
+                    Value countValue = record.get("count");
+                    int count = (countValue != null && !countValue.isNull()) ? countValue.asInt() : 0;
+
+                    if (count > 0) {
+                        System.out.println(count);
+                        sendResponseCode(request, 400);
+                    } else if (count == 0) {
+                        try {
+                            session.run(relationQuery, Values.parameters("actorId", actorId, "movieId", movieId));
+                            sendResponseCode(request, 200);
+                        } catch (Exception e) {
+                            sendResponseCode(request, 500);
+                        }
                     }
                 }
             }
@@ -146,6 +163,7 @@ class Utils {
             e1.printStackTrace();
         }
     }
+
 
 
     
@@ -434,6 +452,9 @@ class Utils {
                 break;
             case 400:
                 responseMessage = "400 BAD REQUEST";
+                break;
+            case 404:
+                responseMessage = "404 DOES NOT EXIST";
                 break;
             case 500:
                 responseMessage = "500 INTERNAL SERVER ERROR";
