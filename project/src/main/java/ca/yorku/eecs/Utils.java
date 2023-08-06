@@ -8,10 +8,13 @@ import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.neo4j.driver.AuthTokens;
@@ -22,28 +25,26 @@ import org.neo4j.driver.Result;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Value;
 import org.neo4j.driver.Values;
+import org.neo4j.driver.internal.shaded.io.netty.handler.codec.Headers;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 
+import java.io.OutputStream;
+import com.sun.net.httpserver.HttpExchange;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+import org.neo4j.driver.Record;
+import org.neo4j.driver.Result;
+import org.neo4j.driver.Session;
+import org.neo4j.driver.Values;
+
 class Utils {   
-	
-	static int PORT = 8080;
-	
-    public static void main(String[] args) throws IOException {
-        // Create an HTTP server listening on all available network interfaces on the specified port
-        HttpServer server = HttpServer.create(new InetSocketAddress("0.0.0.0", PORT), 0);
-
-
-        // Start the HTTP server
-        server.start();
-
-        // Print a message to indicate that the server has started
-        System.out.printf("Server started on port %d...\n", PORT);
-    }
-
-    public static void addActor(HttpExchange request, Session session) throws IOException {
+		
+    public void addActor(HttpExchange request, Session session) throws IOException {
         String addActorQuery = "CREATE (a:Actor {name: $name, actorId: $actorId})";
 
         try (InputStream inputStream = request.getRequestBody()) {
@@ -78,7 +79,7 @@ class Utils {
 
     
 
-    public static void addMovie(HttpExchange request, Session session) throws IOException {
+    public void addMovie(HttpExchange request, Session session) throws IOException {
         String addMovieQuery = "CREATE (m:Movie {name: $name, movieId: $movieId})";
 
         try (InputStream inputStream = request.getRequestBody()) {
@@ -109,7 +110,7 @@ class Utils {
         }
     }
     
-    public static void addRelationship(HttpExchange request, Session session) throws IOException {
+    public void addRelationship(HttpExchange request, Session session) throws IOException {
         String relationQuery = "MATCH (a:Actor), (m:Movie) "
                 + "WHERE a.actorId = $actorId AND m.movieId = $movieId "
                 + "CREATE (a)-[r:ACTED_IN]->(m) "
@@ -147,56 +148,172 @@ class Utils {
     }
 
 
+    
 
-    /*
-    public static void getActor(HttpExchange request, Session session) throws IOException {
+    
+
+     
+
+    public void getActor(HttpExchange request, Session session) throws IOException, JSONException {
         String getActorQuery = "MATCH (a:Actor {actorId: $actorId})-[r:ACTED_IN]->(m:Movie) RETURN a.name AS name, m.movieId AS movieId";
+        
+        // Extract the query parameters from the request URI
+        String query = request.getRequestURI().getQuery();
+        Map<String, String> queryParams = splitQuery(query);
+
+        // Get the actorId from the query parameters
+        String actorId = queryParams.get("actorId");
+
+        if (actorId == null || actorId.isEmpty()) {
+            sendResponseCode(request, 400);
+            return;
+        }else {
+        
+		        
+	        try {
+	        	String checkQuery = "MATCH (a:Actor {actorId: $actorId})\r\n"
+	        			+ "RETURN a.name AS name";
+	        	Result getname = session.run(checkQuery, Values.parameters("actorId", actorId));
+	        	Result result = session.run(getActorQuery, Values.parameters("actorId", actorId));
+		        ArrayList<String> movies = new ArrayList<>();
+		        String name = getname.single().get("name").asString();
+		
+		        while (result.hasNext()) {
+		            Record record = result.next();
+		            // Extract the name only if it's not already set
+		            movies.add(record.get("movieId").asString());
+		        }
+		        
+		        // Create the JSON object
+		        JSONObject jsonObject = new JSONObject();
+		        jsonObject.put("actorId", actorId);
+		        jsonObject.put("name", name);
+		        jsonObject.put("movies", new JSONArray(movies));
+		       
+		        // Convert JSON object to a string
+		        String jsonOutput = jsonObject.toString();
+		        jsonOutput += "\n200 OK";
+		        System.out.print(jsonOutput);
+		        
+		        request.sendResponseHeaders(200, jsonOutput.length());
+		        OutputStream os = request.getResponseBody();
+		        os.write(jsonOutput.getBytes());
+		        os.close();
+            } catch (Exception e) {
+                sendResponseCode(request, 500);
+            }
+        }
+        
+         
+    }
+
+
+
+    public void getMovie(HttpExchange request, Session session) throws IOException {
+        String getMovieQuery = "MATCH (m:Movie {movieId: $movieId}) RETURN m.name AS name";
+
+        // Extract the query parameters from the request URI
+        String query = request.getRequestURI().getQuery();
+        Map<String, String> queryParams = splitQuery(query);
+
+        // Get the movieId from the query parameters
+        String movieId = queryParams.get("movieId");
+
+        if (movieId == null || movieId.isEmpty()) {
+            sendResponseCode(request, 400);
+            return;
+        }
 
         try {
-            // Extract the query parameters from the request URI
-            String query = request.getRequestURI().getQuery();
-            Map<String, String> queryParams = splitQuery(query);
+            Result result = session.run(getMovieQuery, Values.parameters("movieId", movieId));
 
-            // Get the actorId from the query parameters
-            String actorId = queryParams.get("actorId");
+            if (result.hasNext()) {
+                Record record = result.next();
+                String movieName = record.get("name").asString();
 
-            if (actorId == null || actorId.isEmpty()) {
-                sendResponseCode(request, 400);
-            } else {
-                // Execute the query to retrieve the actor's name and movies
-                Result result = session.run(getActorQuery, Values.parameters("actorId", actorId));
-                if (result != null && result.hasNext()) {
-                    // Convert the result to a JSON representation
-                    JSONObject responseJson = new JSONObject();
-                    JSONArray moviesArray = new JSONArray();
-                    String actorName = null;
+                // Now, query the actors related to the movie
+                String getActorsQuery = "MATCH (a:Actor)-[:ACTED_IN]->(m:Movie {movieId: $movieId}) RETURN a.actorId AS actorId";
+                result = session.run(getActorsQuery, Values.parameters("movieId", movieId));
+                JSONArray actorIds = new JSONArray();
 
-                    while (result.hasNext()) {
-                        Record record = result.next();
-                        actorName = record.get("name").asString();
-                        String movieId = record.get("movieId").asString();
-                        moviesArray.put(movieId);
-                    }
-
-                    responseJson.put("actorId", actorId);
-                    responseJson.put("name", actorName);
-                    responseJson.put("movies", moviesArray);
-
-                    // Send the JSON response
-                    String response = responseJson.toString();
-                    sendJsonResponse(request, 200, response);
-                } else {
-                    // Actor with the given actorId not found
-                    // Return 404 Not Found status code
-                    sendResponseCode(request, 404);
+                while (result.hasNext()) {
+                    record = result.next();
+                    // Extract the actor's ID from the record and add it to the actorIds array
+                    actorIds.put(record.get("actorId").asString());
                 }
+
+                // Create the JSON object
+                JSONObject jsonObject = new JSONObject();
+                jsonObject.put("movieId", movieId);
+                jsonObject.put("name", movieName);
+                jsonObject.put("actors", actorIds);
+
+                // Convert JSON object to a string
+                String jsonOutput = jsonObject.toString();
+		        jsonOutput += "\n200 OK";
+		        System.out.print(jsonOutput);
+		        
+                request.sendResponseHeaders(200, jsonOutput.length());
+                OutputStream os = request.getResponseBody();
+                os.write(jsonOutput.getBytes());
+                os.close();
+            } else {
+                sendResponseCode(request, 404); // Movie not found
             }
-        } catch (UnsupportedEncodingException e) {
-            e.printStackTrace();
+        } catch (Exception e) {
             sendResponseCode(request, 500);
         }
     }
-    */
+    
+    public void hasRelationship(HttpExchange request, Session session) throws IOException {
+        // Extract the query parameters from the request URI
+        String query = request.getRequestURI().getQuery();
+        Map<String, String> queryParams = splitQuery(query);
+
+        // Get the actorId and movieId from the query parameters
+        String actorId = queryParams.get("actorId");
+        String movieId = queryParams.get("movieId");
+
+        if (actorId == null || actorId.isEmpty() || movieId == null || movieId.isEmpty()) {
+            sendResponseCode(request, 400);
+            return;
+        }
+
+        try {
+            String checkQuery = "MATCH (a:Actor {actorId: $actorId})-[r:ACTED_IN]->(m:Movie {movieId: $movieId}) RETURN COUNT(r) AS relationshipCount";
+            Result result = session.run(checkQuery, Values.parameters("actorId", actorId, "movieId", movieId));
+
+            if (result.hasNext()) {
+                Record record = result.next();
+                int relationshipCount = record.get("relationshipCount").asInt();
+
+                // Create the JSON object
+                JSONObject jsonObject = new JSONObject();
+                jsonObject.put("actorId", actorId);
+                jsonObject.put("movieId", movieId);
+                jsonObject.put("hasRelationship", relationshipCount > 0);
+
+                // Convert JSON object to a string
+                String jsonOutput = jsonObject.toString();
+		        jsonOutput += "\n200 OK";
+		        System.out.print(jsonOutput);
+
+                request.sendResponseHeaders(200, jsonOutput.length());
+                OutputStream os = request.getResponseBody();
+                os.write(jsonOutput.getBytes());
+                os.close();
+            } else {
+                sendResponseCode(request, 404); // Actor or movie not found
+            }
+        } catch (Exception e) {
+            sendResponseCode(request, 500);
+        }
+    }
+
+    
+
+
+    
 
 
 
@@ -225,14 +342,14 @@ class Utils {
 	                }
 	            } else if (requestMethod.equals("GET")) {
 	                if (requestPath.equals("/api/v1/getActor")) {
+	                    getActor(request, session);
 	                    System.out.println("GET");
-	                    // getActor(request);
 	                } else if (requestPath.equals("/api/v1/getMovie")) {
 	                    System.out.println("GET");
-	                    // getMovie(request);
+	                    getMovie(request, session);
 	                } else if (requestPath.equals("/api/v1/hasRelationship")) {
 	                    System.out.println("GET");
-	                    // hasRelationship(request);
+	                    hasRelationship(request, session);
 	                } else if (requestPath.equals("/api/v1/computeBaconNumber")) {
 	                    System.out.println("GET");
 	                    // computeBacon(request);
@@ -247,13 +364,19 @@ class Utils {
 	            System.out.println("Server error");
 	        }
 	    }
+	    
+	    
 	
 
 	
   
 	
 	
-    // use for extracting query params
+   
+
+
+
+	// use for extracting query params
     public static Map<String, String> splitQuery(String query) throws UnsupportedEncodingException {
         Map<String, String> query_pairs = new LinkedHashMap<>();
         if (query == null || query.isEmpty()) {
@@ -307,13 +430,13 @@ class Utils {
         String responseMessage = null;
         switch (code) {
             case 200:
-                responseMessage = "OK";
+                responseMessage = "200 OK";
                 break;
             case 400:
-                responseMessage = "BAD REQUEST";
+                responseMessage = "400 BAD REQUEST";
                 break;
             case 500:
-                responseMessage = "INTERNAL SERVER ERROR";
+                responseMessage = "500 INTERNAL SERVER ERROR";
                 break;
             default:
                 responseMessage = "NEW ERROR DETECTED";
