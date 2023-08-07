@@ -6,11 +6,10 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
-import java.net.InetSocketAddress;
 import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -25,25 +24,13 @@ import org.neo4j.driver.Result;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Value;
 import org.neo4j.driver.Values;
-import org.neo4j.driver.internal.shaded.io.netty.handler.codec.Headers;
+import org.neo4j.driver.types.Node;
+import org.neo4j.driver.types.Path;
 
 import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpHandler;
-import com.sun.net.httpserver.HttpServer;
-
-import java.io.OutputStream;
-import com.sun.net.httpserver.HttpExchange;
-
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
-import org.neo4j.driver.Record;
-import org.neo4j.driver.Result;
-import org.neo4j.driver.Session;
-import org.neo4j.driver.Values;
 
 class Utils {   
-		
+	
     public void addActor(HttpExchange request, Session session) throws IOException {
         String addActorQuery = "CREATE (a:Actor {name: $name, actorId: $actorId})";
 
@@ -76,7 +63,7 @@ class Utils {
 			e1.printStackTrace();
 		}
     }
-
+    
     
 
     public void addMovie(HttpExchange request, Session session) throws IOException {
@@ -327,6 +314,122 @@ class Utils {
             sendResponseCode(request, 500);
         }
     }
+    
+    /*
+    public void computeBaconPath(HttpExchange request, Session session) throws IOException {
+        // Extract the query parameters from the request URI
+        String query = request.getRequestURI().getQuery();
+        Map<String, String> queryParams = splitQuery(query);
+
+        // Get the actorId from the query parameters
+        String actorId = queryParams.get("actorId");
+
+        if (actorId == null || actorId.isEmpty()) {
+            sendResponseCode(request, 400);
+            return;
+        }
+
+        try {
+            String baconPathQuery = "MATCH (a:Actor {actorId: $actorId}), (k:Actor {actorId: 'nm0000102'}), " +
+                                    "p = shortestPath((a)-[*]-(k)) " +
+                                    "RETURN p";
+
+            Result result = session.run(baconPathQuery, Values.parameters("actorId", actorId));
+
+            if (result.hasNext()) {
+                Record record = result.next();
+                Path path = record.get("p").asPath();
+                List<Node> nodesInPath = (List<Node>) path.nodes();
+
+                // Create the JSON array to store the bacon path
+                JSONArray baconPathArray = new JSONArray();
+
+                // Add each node in the path to the baconPathArray
+                for (Node node : nodesInPath) {
+                    JSONObject nodeObject = new JSONObject();
+                    nodeObject.put("actorId", node.get("actorId").asString());
+                    nodeObject.put("name", node.get("name").asString());
+                    baconPathArray.put(nodeObject);
+                }
+
+                // Create the JSON object with baconPathArray
+                JSONObject jsonObject = new JSONObject();
+                jsonObject.put("baconPath", baconPathArray);
+
+                // Convert JSON object to a string
+                String jsonOutput = jsonObject.toString();
+                jsonOutput += "\n200 OK";
+                System.out.print(jsonOutput);
+
+                request.sendResponseHeaders(200, jsonOutput.length());
+                OutputStream os = request.getResponseBody();
+                os.write(jsonOutput.getBytes());
+                os.close();
+            } else {
+                sendResponseCode(request, 404); // No path exists between actor and Kevin Bacon
+            }
+        } catch (Exception e) {
+            sendResponseCode(request, 500);
+        }
+    }
+	*/
+    
+
+
+    public void computeBaconNumber(HttpExchange request, Session session) throws IOException {
+        // Extract the query parameters from the request URI
+        String query = request.getRequestURI().getQuery();
+        Map<String, String> queryParams = splitQuery(query);
+
+        // Get the actorId from the query parameters
+        String actorId = queryParams.get("actorId");
+
+        if (actorId == null || actorId.isEmpty()) {
+            sendResponseCode(request, 400);
+            return;
+        }
+
+        try {
+            String baconNumberQuery;
+            if (actorId.equals("nm0000102")) {
+                // Special case: Kevin Bacon himself
+                baconNumberQuery = "RETURN 0 AS baconNumber";
+            } else {
+                baconNumberQuery = "MATCH (a:Actor {actorId: $actorId}), (k:Actor {actorId: 'nm0000102'}), " +
+                                   "p=shortestPath((a)-[:ACTED_IN*]-(k)) " +
+                                   "RETURN length(p) / 2 AS baconNumber";
+            }
+
+            Result result = session.run(baconNumberQuery, Values.parameters("actorId", actorId));
+
+            if (result.hasNext()) {
+                Record record = result.next();
+                int baconNumber = record.get("baconNumber").asInt();
+
+                // Create the JSON object
+                JSONObject jsonObject = new JSONObject();
+                jsonObject.put("baconNumber", baconNumber);
+
+                // Convert JSON object to a string
+                String jsonOutput = jsonObject.toString();
+                jsonOutput += "\n200 OK";
+                System.out.print(jsonOutput);
+
+                request.sendResponseHeaders(200, jsonOutput.length());
+                OutputStream os = request.getResponseBody();
+                os.write(jsonOutput.getBytes());
+                os.close();
+            } else {
+                sendResponseCode(request, 404);
+            }
+        } catch (Exception e) {
+            sendResponseCode(request, 500);
+        }
+    }
+
+
+
+
 
     
 
@@ -336,61 +439,60 @@ class Utils {
 
 
 	 
-	    public void handle(HttpExchange request) throws IOException {
-	        String uri = "bolt://localhost:7687";
-	        String username = "neo4j";
-	        String password = "12345678";
+    public void handle(HttpExchange request) throws IOException {
+        String uri = "bolt://localhost:7687";
+        String username = "neo4j";
+        String password = "12345678";
 
-	        Driver driver = GraphDatabase.driver(uri, AuthTokens.basic(username, password));
-	        String requestMethod = request.getRequestMethod();
-	        String requestPath = request.getRequestURI().getPath();
+        Driver driver = GraphDatabase.driver(uri, AuthTokens.basic(username, password));
+        String requestMethod = request.getRequestMethod();
+        String requestPath = request.getRequestURI().getPath();
 
-	        try (Session session = driver.session()) {
-	            if (requestMethod.equals("PUT")) {
-	                if (requestPath.equals("/api/v1/addActor")) {
-	                    addActor(request, session);
-	                    System.out.println("PUT");
-	                } else if (requestPath.equals("/api/v1/addMovie")) {
-	                    addMovie(request, session);
-	                    System.out.println("PUT");
-	                } else if (requestPath.equals("/api/v1/addRelationship")) {
-	                    addRelationship(request, session);
-	                    System.out.println("PUT");
-	                    // addRelationship(request);
-	                }
-	            } else if (requestMethod.equals("GET")) {
-	                if (requestPath.equals("/api/v1/getActor")) {
-	                    getActor(request, session);
-	                    System.out.println("GET");
-	                } else if (requestPath.equals("/api/v1/getMovie")) {
-	                    System.out.println("GET");
-	                    getMovie(request, session);
-	                } else if (requestPath.equals("/api/v1/hasRelationship")) {
-	                    System.out.println("GET");
-	                    hasRelationship(request, session);
-	                } else if (requestPath.equals("/api/v1/computeBaconNumber")) {
-	                    System.out.println("GET");
-	                    // computeBacon(request);
-	                }
-	            } else {
-	                System.out.println("Unrecognized command");
-	                // sendResponse(request, "Unimplemented method\n", 501);
-	            }
-	        } catch (Exception e) {
-	            e.printStackTrace();
-	            // sendResponse(request, "Server error\n", 500);
-	            System.out.println("Server error");
-	        }
-	    }
+        try (Session session = driver.session()) {
+            if (requestMethod.equals("PUT")) {
+                if (requestPath.equals("/api/v1/addActor")) {
+                    addActor(request, session);
+                    System.out.println("PUT");
+                } else if (requestPath.equals("/api/v1/addMovie")) {
+                    addMovie(request, session);
+                    System.out.println("PUT");
+                } else if (requestPath.equals("/api/v1/addRelationship")) {
+                    addRelationship(request, session);
+                    System.out.println("PUT");
+                    // addRelationship(request);
+                }
+            } else if (requestMethod.equals("GET")) {
+                if (requestPath.equals("/api/v1/getActor")) {
+                    getActor(request, session);
+                    System.out.println("GET");
+                } else if (requestPath.equals("/api/v1/getMovie")) {
+                    System.out.println("GET");
+                    getMovie(request, session);
+                } else if (requestPath.equals("/api/v1/hasRelationship")) {
+                    System.out.println("GET");
+                    hasRelationship(request, session);
+                } else if (requestPath.equals("/api/v1/computeBaconNumber")) {
+                    System.out.println("GET");
+                    computeBaconNumber(request, session);
+                }
+            } else {
+                System.out.println("Unrecognized command");
+                // sendResponse(request, "Unimplemented method\n", 501);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            // sendResponse(request, "Server error\n", 500);
+            System.out.println("Server error");
+        }
+    }
 	    
-	    
-	
-
-	
-  
-	
-	
+	   
    
+
+
+
+	
+
 
 
 
