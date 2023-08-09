@@ -36,29 +36,31 @@ public class Utils{
 
         try (Session session = driver.session()) {
             if ("PUT".equalsIgnoreCase(requestMethod)) {
-                if (requestPath.equals("/api/v1/addActor")) {
+            	if (requestPath.equals("/api/v1/addActor")) {
                     String requestBody = Utils.getBody(exchange);
 
                     String name = null;
                     String actorId = null;
+                    String age = null;
                     try {
                         JSONObject json = new JSONObject(requestBody);
                         name = json.getString("name");
                         actorId = json.getString("actorId");
+                        age = json.getString("age");
                     } catch (Exception e) {
-                    	sendResponseCode(exchange, 400);
+                        e.printStackTrace();
                     }
 
                     if (name == null || name.isEmpty() || actorId == null || actorId.isEmpty()) {
                         sendResponseCode(exchange, 400);
                     } else {
-                        String checkQuery = "MATCH (a:Actor {actorId: $actorId}) RETURN a";
+                        String checkQuery = "MATCH (a:actor {actorId: $actorId}) RETURN a";
                         StatementResult result = session.run(checkQuery, Values.parameters("actorId", actorId));
                         if (result != null && result.hasNext()) {
                             sendResponseCode(exchange, 400);
                         } else {
                             try {
-                                createActorNode(name, actorId);
+                                createActorNode(name, actorId, age);
                                 sendResponseCode(exchange, 200);
                             } catch (Exception e) {
                                 sendResponseCode(exchange, 500);
@@ -81,7 +83,7 @@ public class Utils{
                     if (name == null || name.isEmpty() || movieId == null || movieId.isEmpty()) {
                         sendResponseCode(exchange, 400);
                     } else {
-                    	String checkQuery = "MATCH (m:Movie {movieId: $movieId}) RETURN m";
+                    	String checkQuery = "MATCH (m:movie {movieId: $movieId}) RETURN m";
                         StatementResult result = session.run(checkQuery, Values.parameters("movieId", movieId));
                         if (result != null && result.hasNext()) {
                             sendResponseCode(exchange, 400);
@@ -151,7 +153,48 @@ public class Utils{
                     }
                 }
             }else if ("GET".equalsIgnoreCase(requestMethod)){
-            	if (requestPath.equals("/api/v1/getActor")){
+            	if (requestPath.equals("/api/v1/getActorsByAge")) {
+            		String query = exchange.getRequestURI().getQuery();
+                    Map<String, String> queryParams = splitQuery(query);
+
+                    // Get the age from the query parameters
+                    String ageStr = queryParams.get("age");
+
+                    if (ageStr == null || ageStr.isEmpty()) {
+                        sendResponseCode(exchange, 400);
+                        return;
+                    }
+
+                    try {
+                        StatementResult result = getActorsByAge(ageStr);
+
+                        if (result.hasNext()) {
+                            JSONArray actorsArray = new JSONArray();
+                            while (result.hasNext()) {
+                                Record record = result.next();
+                                actorsArray.put(record.get("actorName").asString());
+                            }
+
+                            // Create the JSON object
+                            JSONObject jsonObject = new JSONObject();
+                            jsonObject.put("actors", actorsArray);
+
+                            // Convert JSON object to a string
+                            String jsonOutput = jsonObject.toString();
+                            jsonOutput += "\n200 OK";
+                            System.out.print(jsonOutput);
+
+                            exchange.sendResponseHeaders(200, jsonOutput.length());
+                            OutputStream os = exchange.getResponseBody();
+                            os.write(jsonOutput.getBytes());
+                            os.close();
+                        } else {
+                            sendResponseCode(exchange, 404);
+                        }
+                    } catch (NumberFormatException e) {
+                        sendResponseCode(exchange, 400);
+                    }
+            	}else if (requestPath.equals("/api/v1/getActor")){
                 	String query = exchange.getRequestURI().getQuery();
                     Map<String, String> queryParams = splitQuery(query);
 
@@ -394,7 +437,7 @@ public class Utils{
             // Special case: Kevin Bacon himself
             baconNumberQuery = "RETURN 0 AS baconNumber";
         } else {
-            baconNumberQuery = "MATCH (a:Actor {actorId: $actorId}), (k:Actor {actorId: 'nm0000102'}), " +
+            baconNumberQuery = "MATCH (a:actor {actorId: $actorId}), (k:actor {actorId: 'nm0000102'}), " +
                                "p=shortestPath((a)-[:ACTED_IN*]-(k)) " +
                                "RETURN length(p) / 2 AS baconNumber";
         }        
@@ -409,7 +452,7 @@ public class Utils{
     
     public static StatementResult getHasRelationNode(String actorId, String movieId) {
     	StatementResult Result;
-        String getHasRelation = "MATCH (a:Actor {actorId: $actorId})-[r:ACTED_IN]->(m:Movie {movieId: $movieId}) RETURN COUNT(r) AS relationshipCount";
+        String getHasRelation = "MATCH (a:actor {actorId: $actorId})-[r:ACTED_IN]->(m:movie {movieId: $movieId}) RETURN COUNT(r) AS relationshipCount";
         try (Session session = driver.session()) {
             Result = session.run(getHasRelation, Values.parameters("actorId", actorId, "movieId", movieId));
         } 
@@ -421,7 +464,7 @@ public class Utils{
     
     public static StatementResult getMovieNode(String movieId) {
     	StatementResult Result;
-        String getMovieQuery = "MATCH (m:Movie {movieId: $movieId}) RETURN m.name AS name";
+        String getMovieQuery = "MATCH (m:movie {movieId: $movieId}) RETURN m.name AS name";
         try (Session session = driver.session()) {
             Result = session.run(getMovieQuery, Values.parameters("movieId", movieId));
         } 
@@ -430,7 +473,7 @@ public class Utils{
     
     public static StatementResult getActorsinMovieNode(String movieId) {
     	StatementResult Result;
-        String getMovieQuery = "MATCH (a:Actor)-[:ACTED_IN]->(m:Movie {movieId: $movieId}) RETURN a.actorId AS actorId";
+        String getMovieQuery = "MATCH (a:actor)-[:ACTED_IN]->(m:movie {movieId: $movieId}) RETURN a.actorId AS actorId";
         try (Session session = driver.session()) {
             Result = session.run(getMovieQuery, Values.parameters("movieId", movieId));
         } 
@@ -439,7 +482,7 @@ public class Utils{
     
     public static StatementResult checkMovieExists(String movieId) {
     	StatementResult Result;
-    	String checkQuery = "MATCH (a:Movie {movieId: $movieId}) RETURN COUNT(a) AS countMovie";
+    	String checkQuery = "MATCH (a:movie {movieId: $movieId}) RETURN COUNT(a) AS countMovie";
         try (Session session = driver.session()) {
             Result = session.run(checkQuery, Values.parameters("movieId", movieId));
         } 
@@ -450,7 +493,7 @@ public class Utils{
 
     public static StatementResult getActorNode(String actorId) {
     	StatementResult Result;
-        String getActorQuery = "MATCH (a:Actor {actorId: $actorId})-[r:ACTED_IN]->(m:Movie) RETURN a.name AS name, m.movieId AS movieId";
+        String getActorQuery = "MATCH (a:actor {actorId: $actorId})-[r:ACTED_IN]->(m:movie) RETURN a.name AS name, m.movieId AS movieId";
         try (Session session = driver.session()) {
             Result = session.run(getActorQuery, Values.parameters("actorId", actorId));
         } 
@@ -459,7 +502,7 @@ public class Utils{
     
     public static StatementResult getActorName(String actorId) {
     	StatementResult Result;
-    	String checkQuery = "MATCH (a:Actor {actorId: $actorId}) RETURN a.name AS name";
+    	String checkQuery = "MATCH (a:actor {actorId: $actorId}) RETURN a.name AS name";
         try (Session session = driver.session()) {
             Result = session.run(checkQuery, Values.parameters("actorId", actorId));
         } 
@@ -468,7 +511,7 @@ public class Utils{
     
     public static StatementResult checkActorExists(String actorId) {
     	StatementResult Result;
-    	String checkQuery = "MATCH (a:Actor {actorId: $actorId}) RETURN COUNT(a) AS countActor";
+    	String checkQuery = "MATCH (a:actor {actorId: $actorId}) RETURN COUNT(a) AS countActor";
         try (Session session = driver.session()) {
             Result = session.run(checkQuery, Values.parameters("actorId", actorId));
         } 
@@ -477,18 +520,27 @@ public class Utils{
 
 
     //PUT ADD ACTOR QUERIES ///////////////////////////////
+    
+    public static StatementResult getActorsByAge(String ageStr) {
+    	 
+        String query = "MATCH (a:actor {age: $age}) RETURN a.name AS actorName";
 
-    public static void createActorNode(String name, String actorId) {
-        String createQuery = "CREATE (a:Actor {name: $name, actorId: $actorId})";
         try (Session session = driver.session()) {
-            session.run(createQuery, Values.parameters("name", name, "actorId", actorId));
+            return session.run(query, Values.parameters("age", ageStr));
+        }
+    }
+
+    public static void createActorNode(String name, String actorId, String age) {
+        String createQuery = "CREATE (a:actor {name: $name, actorId: $actorId, age: $age})";
+        try (Session session = driver.session()) {
+            session.run(createQuery, Values.parameters("name", name, "actorId", actorId, "age", age));
         } 
     }
     
     //PUT ADD MOVIE QUERIES
     
     public static void createMovieNode(String name, String movieId) {
-        String createQuery = "CREATE (m:Movie {name: $name, movieId: $movieId})";
+        String createQuery = "CREATE (m:movie {name: $name, movieId: $movieId})";
 
         try (Session session = driver.session()) {
             session.run(createQuery, Values.parameters("name", name, "movieId", movieId));
@@ -501,7 +553,7 @@ public class Utils{
 
     
     public static void createBond(String actorId, String movieId) {
-    	String createQuery = "MATCH (a:Actor), (m:Movie) "
+    	String createQuery = "MATCH (a:actor), (m:movie) "
                 + "WHERE a.actorId = $actorId AND m.movieId = $movieId "
                 + "CREATE (a)-[r:ACTED_IN]->(m) "
                 + "RETURN type(r)";
@@ -514,7 +566,7 @@ public class Utils{
 
     public static StatementResult movieOrActorExists(String actorId, String movieId) {
     	StatementResult Result;
-        String ifExistsQuery = "MATCH (a:Actor {actorId: $actorId}), (m:Movie {movieId: $movieId}) RETURN COUNT(a) AS countActor, COUNT(m) AS countMovie";
+        String ifExistsQuery = "MATCH (a:actor {actorId: $actorId}), (m:movie {movieId: $movieId}) RETURN COUNT(a) AS countActor, COUNT(m) AS countMovie";
     	try (Session session = driver.session()) {
         	Result = session.run(ifExistsQuery, Values.parameters("actorId", actorId, "movieId", movieId));
 
@@ -525,7 +577,7 @@ public class Utils{
     
     public static StatementResult bondExists(String actorId, String movieId) {
     	StatementResult Result;
-        String checkQuery = "MATCH (a:Actor {actorId: $actorId})-[:ACTED_IN]->(m:Movie {movieId: $movieId}) RETURN COUNT(*) AS count";
+        String checkQuery = "MATCH (a:actor {actorId: $actorId})-[:ACTED_IN]->(m:movie {movieId: $movieId}) RETURN COUNT(*) AS count";
     	try (Session session = driver.session()) {
         	Result = session.run(checkQuery, Values.parameters("actorId", actorId, "movieId", movieId));
 
