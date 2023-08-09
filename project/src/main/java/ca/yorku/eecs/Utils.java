@@ -13,142 +13,541 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.util.stream.Collectors;
 
-import java.io.BufferedReader;
-import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
-
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
-import org.neo4j.driver.v1.*;
 
-import com.sun.net.httpserver.HttpExchange;
-
-public class Utils {
+public class Utils{
     private static Driver driver;
-
-    public Utils(String uri, String user, String password) {
+    
+    public void handle(HttpExchange exchange) throws IOException {
         String uriDb = "bolt://localhost:7687";
         Config config = Config.builder().withoutEncryption().build();
         driver = GraphDatabase.driver(uriDb, AuthTokens.basic("neo4j", "12345678"), config);
-    }
+        String requestMethod = exchange.getRequestMethod();
+        String requestPath = exchange.getRequestURI().getPath();
 
-    public void addPerson(String name) {
         try (Session session = driver.session()) {
-            session.writeTransaction(tx -> tx.run("MERGE (a:Person {name: $x})", parameters("x", name)));
-        }
-    }
+            if ("PUT".equalsIgnoreCase(requestMethod)) {
+                if (requestPath.equals("/api/v1/addActor")) {
+                    String requestBody = Utils.getBody(exchange);
 
-    public static void close() {
-        driver.close();
-    }
-    
-    public void addActor(HttpExchange request, Session session) throws IOException {
-        String addActorQuery = "CREATE (a:Actor {name: $name, actorId: $actorId})";
-
-        try (InputStream inputStream = request.getRequestBody()) {
-            // Parse the JSON data from the request body
-            JSONObject jsonObject = new JSONObject(convert(inputStream));
-
-            String name = jsonObject.optString("name");
-            String actorId = jsonObject.optString("actorId");
-
-            if (name == null || name.isEmpty() || actorId == null || actorId.isEmpty()) {
-                sendResponseCode(request, 400);
-            } else {
-            	String checkQuery = "MATCH (a:Actor {actorId: $actorId}) RETURN a";
-    			StatementResult result = session.run(checkQuery, Values.parameters("actorId", actorId));
-                if (result != null && result.hasNext()) {
-                    sendResponseCode(request, 400);
-                } else {
+                    String name = null;
+                    String actorId = null;
                     try {
-                        session.run(addActorQuery, Values.parameters("name", name, "actorId", actorId));
-                        sendResponseCode(request, 200);
+                        JSONObject json = new JSONObject(requestBody);
+                        name = json.getString("name");
+                        actorId = json.getString("actorId");
                     } catch (Exception e) {
-                        sendResponseCode(request, 500);
+                    	sendResponseCode(exchange, 400);
                     }
+
+                    if (name == null || name.isEmpty() || actorId == null || actorId.isEmpty()) {
+                        sendResponseCode(exchange, 400);
+                    } else {
+                        String checkQuery = "MATCH (a:Actor {actorId: $actorId}) RETURN a";
+                        StatementResult result = session.run(checkQuery, Values.parameters("actorId", actorId));
+                        if (result != null && result.hasNext()) {
+                            sendResponseCode(exchange, 400);
+                        } else {
+                            try {
+                                createActorNode(name, actorId);
+                                sendResponseCode(exchange, 200);
+                            } catch (Exception e) {
+                                sendResponseCode(exchange, 500);
+                            }
+                        }
+                    }
+                } else if (requestPath.equals("/api/v1/addMovie")) {
+                    String requestBody = Utils.getBody(exchange);
+
+                    String name = null;
+                    String movieId = null;
+                    try {
+                        JSONObject json = new JSONObject(requestBody);
+                        name = json.getString("name");
+                        movieId = json.getString("movieId");
+                    } catch (Exception e) {
+                    	sendResponseCode(exchange, 400);
+                    }
+
+                    if (name == null || name.isEmpty() || movieId == null || movieId.isEmpty()) {
+                        sendResponseCode(exchange, 400);
+                    } else {
+                    	String checkQuery = "MATCH (m:Movie {movieId: $movieId}) RETURN m";
+                        StatementResult result = session.run(checkQuery, Values.parameters("movieId", movieId));
+                        if (result != null && result.hasNext()) {
+                            sendResponseCode(exchange, 400);
+                        } else {
+                            try {
+                                createMovieNode(name, movieId);
+                                sendResponseCode(exchange, 200);
+                            } catch (Exception e) {
+                                sendResponseCode(exchange, 500);
+                            }
+                        }
+                    }
+                } else if (requestPath.equals("/api/v1/addRelationship")) {
+                    String requestBody = Utils.getBody(exchange);
+
+                    String actorId = null;
+                    String movieId = null;
+                    try {
+                        JSONObject json = new JSONObject(requestBody);
+                        actorId = json.getString("actorId");
+                        movieId = json.getString("movieId");
+                    } catch (Exception e) {
+                    	sendResponseCode(exchange, 400);
+                    }
+
+                    if (actorId == null || actorId.isEmpty() || movieId == null || movieId.isEmpty()) {
+                        sendResponseCode(exchange, 400);
+                    } else {
+
+                        StatementResult result =  movieOrActorExists(actorId, movieId);
+                        int countActor = -1;
+                        int countMovie = -1;
+
+                        if (result.hasNext()) {
+                            Record record = result.next();
+                            countActor = record.get("countActor").asInt();
+                            countMovie = record.get("countMovie").asInt();
+
+                            System.out.println("Count of Actors: " + countActor);
+                            System.out.println("Count of Movies: " + countMovie);
+                        }
+                        
+                        if (countActor == 0 || countMovie == 0) {
+                            sendResponseCode(exchange, 404);
+                        } else {
+
+                            StatementResult result2 = bondExists(actorId, movieId);
+                            
+                            Record record = result2.single();
+                            Value countValue = record.get("count");
+                            int count = (countValue != null && !countValue.isNull()) ? countValue.asInt() : 0;
+
+                            System.out.print(count);
+                            
+                            if (count > 0) {
+                                System.out.println(count);
+                                sendResponseCode(exchange, 400);
+                            } else if (count == 0) {
+                                try {
+                                    createBond(actorId, movieId);
+                                    sendResponseCode(exchange, 200);
+                                } catch (Exception e) {
+                                    sendResponseCode(exchange, 500);
+                                }
+                            }
+                        }
+                    }
+                }
+            }else if ("GET".equalsIgnoreCase(requestMethod)){
+            	if (requestPath.equals("/api/v1/getActor")){
+                	String query = exchange.getRequestURI().getQuery();
+                    Map<String, String> queryParams = splitQuery(query);
+
+                    // Get the actorId from the query parameters
+                    String actorId = queryParams.get("actorId");
+
+                    if (actorId == null || actorId.isEmpty()) {
+                        sendResponseCode(exchange, 400);
+                        return;
+                    }else {
+                    
+            	        try {
+            	        	StatementResult check = checkActorExists(actorId);
+            	        	
+            	        	Record record0 = check.single();
+                            Value countValue = record0.get("countActor");
+                            int count = countValue.asInt();
+            	        	
+                            System.out.print(count);
+                            
+                            if (count > 0) {
+                            	StatementResult getname = getActorName( actorId);
+                	        	StatementResult result = getActorNode(actorId);
+                		        ArrayList<String> movies = new ArrayList<>();
+                		        String name = getname.single().get("name").asString();
+                		
+                		        while (result.hasNext()) {
+                		            Record record = result.next();
+                		            // Extract the name only if it's not already set
+                		            movies.add(record.get("movieId").asString());
+                		        }
+                		        
+                		        
+                		        // Create the JSON object
+                		        JSONObject jsonObject = new JSONObject();
+                		        jsonObject.put("actorId", actorId);
+                		        jsonObject.put("name", name);
+                		        jsonObject.put("movies", new JSONArray(movies));
+                		       
+                		        // Convert JSON object to a string
+                		        String jsonOutput = jsonObject.toString();
+                		        jsonOutput += "\n200 OK";
+                		        System.out.print(jsonOutput);
+                		        
+                		        exchange.sendResponseHeaders(200, jsonOutput.length());
+                		        OutputStream os = exchange.getResponseBody();
+                		        os.write(jsonOutput.getBytes());
+                		        os.close();
+                		        
+                            } else if (count == 0) {
+                                sendResponseCode(exchange, 404);
+                            }
+
+            	        	
+                        } catch (Exception e) {
+                            sendResponseCode(exchange, 500);
+                        }
+                    }
+            	}else if (requestPath.equals("/api/v1/getMovie")){
+            		String query = exchange.getRequestURI().getQuery();
+                    Map<String, String> queryParams = splitQuery(query);
+
+                    // Get the movieId from the query parameters
+                    String movieId = queryParams.get("movieId");
+
+                    if (movieId == null || movieId.isEmpty()) {
+                        sendResponseCode(exchange, 400);
+                        return;
+                    }
+                    
+                    
+                    try {
+                    	StatementResult check = checkMovieExists(movieId);
+        	        	
+        	        	Record record0 = check.single();
+                        Value countValue = record0.get("countMovie");
+                        int count = countValue.asInt();
+        	        	
+                        System.out.print(count);
+                        
+                        if (count > 0) {
+                        	
+                        	StatementResult result = getMovieNode(movieId);
+
+            		        String movieName = result.single().get("name").asString();
+
+            		        System.out.print(movieName);
+                        	
+            		        
+                            StatementResult result2 = getActorsinMovieNode(movieId);
+                            JSONArray actorIds = new JSONArray();
+                        
+                            Record record;
+                            while (result2.hasNext()) {
+                                record = result2.next();
+                                actorIds.put(record.get("actorId").asString());
+                            }
+
+                            // Create the JSON object
+                            JSONObject jsonObject = new JSONObject();
+                            jsonObject.put("movieId", movieId);
+                            jsonObject.put("name", movieName);
+                            jsonObject.put("actors", actorIds);
+
+                            // Convert JSON object to a string
+                            String jsonOutput = jsonObject.toString();
+            		        jsonOutput += "\n200 OK";
+            		        System.out.print(jsonOutput);
+            		        
+                            exchange.sendResponseHeaders(200, jsonOutput.length());
+                            OutputStream os = exchange.getResponseBody();
+                            os.write(jsonOutput.getBytes());
+                            os.close();
+                        }else if (count == 0) {
+                            sendResponseCode(exchange, 404);
+                        }
+                    } catch (Exception e) {
+                        sendResponseCode(exchange, 500);
+                    }
+
+            		
+            	}else if (requestPath.equals("/api/v1/hasRelationship")) {
+            		String query = exchange.getRequestURI().getQuery();
+                    Map<String, String> queryParams = splitQuery(query);
+
+                    // Get the actorId and movieId from the query parameters
+                    String actorId = queryParams.get("actorId");
+                    String movieId = queryParams.get("movieId");
+
+                    if (actorId == null || actorId.isEmpty() || movieId == null || movieId.isEmpty()) {
+                        sendResponseCode(exchange, 400);
+                        return;
+                    }
+                    
+                    try {
+                    	
+                    	StatementResult check =  movieOrActorExists(actorId, movieId);
+                        int countActor = -1;
+                        int countMovie = -1;
+
+                        if (check.hasNext()) {
+                            Record record = check.next();
+                            countActor = record.get("countActor").asInt();
+                            countMovie = record.get("countMovie").asInt();
+
+                            System.out.println("Count of Actors: " + countActor);
+                            System.out.println("Count of Movies: " + countMovie);
+                        }
+                        
+                        if (countActor == 0 || countMovie == 0) {
+                            sendResponseCode(exchange, 404);
+                        }
+                    	
+                    	
+                        StatementResult result = getHasRelationNode(actorId, movieId);
+                        
+                        
+
+                        if (result.hasNext()) {
+                            Record record = result.next();
+                            int relationshipCount = record.get("relationshipCount").asInt();
+
+                            // Create the JSON object
+                            JSONObject jsonObject = new JSONObject();
+                            jsonObject.put("actorId", actorId);
+                            jsonObject.put("movieId", movieId);
+                            jsonObject.put("hasRelationship", relationshipCount > 0);
+
+                            // Convert JSON object to a string
+                            String jsonOutput = jsonObject.toString();
+            		        jsonOutput += "\n200 OK";
+            		        System.out.print(jsonOutput);
+
+                            exchange.sendResponseHeaders(200, jsonOutput.length());
+                            OutputStream os = exchange.getResponseBody();
+                            os.write(jsonOutput.getBytes());
+                            os.close();
+                        } 
+                    } catch (Exception e) {
+                        sendResponseCode(exchange, 500);
+                    }
+                    
+                } else if (requestPath.equals("/api/v1/computeBaconNumber")) {
+                	String query = exchange.getRequestURI().getQuery();
+                    Map<String, String> queryParams = splitQuery(query);
+
+                    // Get the actorId from the query parameters
+                    String actorId = queryParams.get("actorId");
+
+                    if (actorId == null || actorId.isEmpty()) {
+                        sendResponseCode(exchange, 400);
+                        return;
+                    }
+                    try {
+
+                        StatementResult result = getBaconNumber(actorId);
+
+                        if (result.hasNext()) {
+                            Record record = result.next();
+                            int baconNumber = record.get("baconNumber").asInt();
+
+                            // Create the JSON object
+                            JSONObject jsonObject = new JSONObject();
+                            jsonObject.put("baconNumber", baconNumber);
+
+                            // Convert JSON object to a string
+                            String jsonOutput = jsonObject.toString();
+                            jsonOutput += "\n200 OK";
+                            System.out.print(jsonOutput);
+
+                            exchange.sendResponseHeaders(200, jsonOutput.length());
+                            OutputStream os = exchange.getResponseBody();
+                            os.write(jsonOutput.getBytes());
+                            os.close();
+                        } else {
+                            sendResponseCode(exchange, 404);
+                        }
+                    } catch (Exception e) {
+                        sendResponseCode(exchange, 500);
+                    }
+                    
 
                 }
             }
-        } catch (Exception e1) {
-			// TODO Auto-generated catch block
-			e1.printStackTrace();
-		}
-    }
-    
-    static class AddPersonHandler implements HttpHandler {
-        private Utils utils;
-
-        public AddPersonHandler(Utils utils) {
-            this.utils = utils;
+        } catch (Exception e) {
+        	sendResponseCode(exchange, 400);
+            System.out.println("Server error");
         }
 
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            if ("PUT".equals(exchange.getRequestMethod())) {
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(exchange.getRequestBody()))) {
-                    String requestBody = reader.lines().collect(Collectors.joining());
-                    String name = requestBody.trim();
-
-                    utils.addPerson(name);
-
-                    String response = "Person added: " + name;
-                    exchange.sendResponseHeaders(200, response.length());
-                    try (OutputStream os = exchange.getResponseBody()) {
-                        os.write(response.getBytes());
-                    }
-                }
-            } else {
-                exchange.sendResponseHeaders(405, 0); // Method not allowed
-            }
-        }
+        OutputStream outputStream = exchange.getResponseBody();
+        outputStream.close();
     }
-
     
+    //GET COMPUTEBACONNUMBER QUERIES ///////////////////////////////
+    
+    public static StatementResult getBaconNumber(String actorId) {
+    	StatementResult Result;
+    	String baconNumberQuery;
+        if (actorId.equals("nm0000102")) {
+            // Special case: Kevin Bacon himself
+            baconNumberQuery = "RETURN 0 AS baconNumber";
+        } else {
+            baconNumberQuery = "MATCH (a:Actor {actorId: $actorId}), (k:Actor {actorId: 'nm0000102'}), " +
+                               "p=shortestPath((a)-[:ACTED_IN*]-(k)) " +
+                               "RETURN length(p) / 2 AS baconNumber";
+        }        
+        try (Session session = driver.session()) {
+            Result = session.run(baconNumberQuery, Values.parameters("actorId", actorId));
+        } 
+		return Result;
+    }
         
-     
+        
+    //GET HASRELATIONSHIP QUERIES ///////////////////////////////
+    
+    public static StatementResult getHasRelationNode(String actorId, String movieId) {
+    	StatementResult Result;
+        String getHasRelation = "MATCH (a:Actor {actorId: $actorId})-[r:ACTED_IN]->(m:Movie {movieId: $movieId}) RETURN COUNT(r) AS relationshipCount";
+        try (Session session = driver.session()) {
+            Result = session.run(getHasRelation, Values.parameters("actorId", actorId, "movieId", movieId));
+        } 
+		return Result;
+    }
+    
+
+    //GET MOVIE QUERIES ///////////////////////////////
+    
+    public static StatementResult getMovieNode(String movieId) {
+    	StatementResult Result;
+        String getMovieQuery = "MATCH (m:Movie {movieId: $movieId}) RETURN m.name AS name";
+        try (Session session = driver.session()) {
+            Result = session.run(getMovieQuery, Values.parameters("movieId", movieId));
+        } 
+		return Result;
+    }
+    
+    public static StatementResult getActorsinMovieNode(String movieId) {
+    	StatementResult Result;
+        String getMovieQuery = "MATCH (a:Actor)-[:ACTED_IN]->(m:Movie {movieId: $movieId}) RETURN a.actorId AS actorId";
+        try (Session session = driver.session()) {
+            Result = session.run(getMovieQuery, Values.parameters("movieId", movieId));
+        } 
+		return Result;
+    }
+    
+    public static StatementResult checkMovieExists(String movieId) {
+    	StatementResult Result;
+    	String checkQuery = "MATCH (a:Movie {movieId: $movieId}) RETURN COUNT(a) AS countMovie";
+        try (Session session = driver.session()) {
+            Result = session.run(checkQuery, Values.parameters("movieId", movieId));
+        } 
+		return Result;
+    }
+
+    //GET ACTOR QUERIES ///////////////////////////////
+
+    public static StatementResult getActorNode(String actorId) {
+    	StatementResult Result;
+        String getActorQuery = "MATCH (a:Actor {actorId: $actorId})-[r:ACTED_IN]->(m:Movie) RETURN a.name AS name, m.movieId AS movieId";
+        try (Session session = driver.session()) {
+            Result = session.run(getActorQuery, Values.parameters("actorId", actorId));
+        } 
+		return Result;
+    }
+    
+    public static StatementResult getActorName(String actorId) {
+    	StatementResult Result;
+    	String checkQuery = "MATCH (a:Actor {actorId: $actorId}) RETURN a.name AS name";
+        try (Session session = driver.session()) {
+            Result = session.run(checkQuery, Values.parameters("actorId", actorId));
+        } 
+		return Result;
+    }
+    
+    public static StatementResult checkActorExists(String actorId) {
+    	StatementResult Result;
+    	String checkQuery = "MATCH (a:Actor {actorId: $actorId}) RETURN COUNT(a) AS countActor";
+        try (Session session = driver.session()) {
+            Result = session.run(checkQuery, Values.parameters("actorId", actorId));
+        } 
+		return Result;
+    }
 
 
-	
+    //PUT ADD ACTOR QUERIES ///////////////////////////////
 
+    public static void createActorNode(String name, String actorId) {
+        String createQuery = "CREATE (a:Actor {name: $name, actorId: $actorId})";
+        try (Session session = driver.session()) {
+            session.run(createQuery, Values.parameters("name", name, "actorId", actorId));
+        } 
+    }
+    
+    //PUT ADD MOVIE QUERIES
+    
+    public static void createMovieNode(String name, String movieId) {
+        String createQuery = "CREATE (m:Movie {name: $name, movieId: $movieId})";
 
+        try (Session session = driver.session()) {
+            session.run(createQuery, Values.parameters("name", name, "movieId", movieId));
 
-
-	// use for extracting query params
-    public static Map<String, String> splitQuery(String query) throws UnsupportedEncodingException {
-        Map<String, String> query_pairs = new LinkedHashMap<>();
-        if (query == null || query.isEmpty()) {
-            return query_pairs;
         }
+    }
+    
+    
+    //PUT ADD RELATIONSHIP QUERIES ///////////////////////////////
 
+    
+    public static void createBond(String actorId, String movieId) {
+    	String createQuery = "MATCH (a:Actor), (m:Movie) "
+                + "WHERE a.actorId = $actorId AND m.movieId = $movieId "
+                + "CREATE (a)-[r:ACTED_IN]->(m) "
+                + "RETURN type(r)";
+    	try (Session session = driver.session()) {
+            session.run(createQuery, Values.parameters("actorId", actorId, "movieId", movieId));
+
+        }
+        
+    }
+
+    public static StatementResult movieOrActorExists(String actorId, String movieId) {
+    	StatementResult Result;
+        String ifExistsQuery = "MATCH (a:Actor {actorId: $actorId}), (m:Movie {movieId: $movieId}) RETURN COUNT(a) AS countActor, COUNT(m) AS countMovie";
+    	try (Session session = driver.session()) {
+        	Result = session.run(ifExistsQuery, Values.parameters("actorId", actorId, "movieId", movieId));
+
+        }
+    	
+		return Result;
+    }
+    
+    public static StatementResult bondExists(String actorId, String movieId) {
+    	StatementResult Result;
+        String checkQuery = "MATCH (a:Actor {actorId: $actorId})-[:ACTED_IN]->(m:Movie {movieId: $movieId}) RETURN COUNT(*) AS count";
+    	try (Session session = driver.session()) {
+        	Result = session.run(checkQuery, Values.parameters("actorId", actorId, "movieId", movieId));
+
+        }
+    	
+		return Result;
+    }
+        
+        
+    ///////////////////////////////////////////////   
+    // use for extracting query params
+    public static Map<String, String> splitQuery(String query) throws UnsupportedEncodingException {
+        Map<String, String> query_pairs = new LinkedHashMap<String, String>();
         String[] pairs = query.split("&");
         for (String pair : pairs) {
             int idx = pair.indexOf("=");
-            if (idx > 0 && idx < pair.length() - 1) {
-                query_pairs.put(
-                    URLDecoder.decode(pair.substring(0, idx), "UTF-8"),
-                    URLDecoder.decode(pair.substring(idx + 1), "UTF-8")
-                );
-            }
+            query_pairs.put(URLDecoder.decode(pair.substring(0, idx), "UTF-8"), URLDecoder.decode(pair.substring(idx + 1), "UTF-8"));
         }
         return query_pairs;
     }
 
-
-    
-
-
-
-	// one possible option for extracting JSON body as String
+    // one possible option for extracting JSON body as String
     public static String convert(InputStream inputStream) throws IOException {
                 
         try (BufferedReader br = new BufferedReader(new InputStreamReader(inputStream))) {
@@ -172,7 +571,6 @@ public class Utils {
 	    
         return buf.toString();
         }
-    
     public static void sendResponseCode(HttpExchange request, int code) throws IOException {
         String responseMessage = null;
         switch (code) {
@@ -183,7 +581,7 @@ public class Utils {
                 responseMessage = "400 BAD REQUEST";
                 break;
             case 404:
-                responseMessage = "404 DOES NOT EXIST";
+                responseMessage = "404 NOT FOUND";
                 break;
             case 500:
                 responseMessage = "500 INTERNAL SERVER ERROR";
