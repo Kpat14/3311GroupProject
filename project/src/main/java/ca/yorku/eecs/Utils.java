@@ -434,7 +434,7 @@ public class Utils{
 
                         if (result.hasNext()) {
                             Record record = result.next();
-                            String baconPath = record.get("baconNumber").toString();
+                            String baconPath = record.get("baconPath").toString();
 
                             // Create the JSON object
                             JSONObject jsonObject = new JSONObject();
@@ -479,7 +479,7 @@ public class Utils{
     	} else {
     		baconPathQuery = "MATCH (start:actor {actorId: $actorId}), (end:actor {actorId: nm0000102})"
     				+ "p=shortestPath((start)-[:ACTED_IN*]-(end))"
-    				+ "RETURN p";
+    				+ "RETURN p AS baconPath";
     	}
     	try (Session session = driver.session()) {
             Result = session.run(baconPathQuery, Values.parameters("actorId", actorId));
