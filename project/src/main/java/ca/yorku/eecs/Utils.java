@@ -477,8 +477,8 @@ public class Utils{
             // Special case: Kevin Bacon himself
             baconPathQuery = "RETURN nm0000102 AS actorId";
     	} else {
-    		baconPathQuery = "MATCH (start:actor {actorId: $actorId}), (end:actor {name:})"
-    				+ "= shortestPath((start)-[:ACTED_IN*]-(end))"
+    		baconPathQuery = "MATCH (start:actor {actorId: $actorId}), (end:actor {actorId: nm0000102})"
+    				+ "p=shortestPath((start)-[:ACTED_IN*]-(end))"
     				+ "RETURN p";
     	}
     	try (Session session = driver.session()) {
