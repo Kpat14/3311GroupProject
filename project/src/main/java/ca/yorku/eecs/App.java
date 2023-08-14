@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import com.sun.net.httpserver.HttpServer;
 
+
 public class App 
 {
     static int PORT = 8080;
@@ -12,6 +13,8 @@ public class App
         HttpServer server = HttpServer.create(new InetSocketAddress("0.0.0.0", PORT), 0);
         // TODO: two lines of code are expected to be added here
         // please refer to the HTML server example 
+        Utils adder = new Utils();
+	    server.createContext("/api/v1/", adder::handle);
         server.start();
         System.out.printf("Server started on port %d...\n", PORT);
     }
