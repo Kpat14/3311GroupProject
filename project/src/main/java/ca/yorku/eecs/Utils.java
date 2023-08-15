@@ -587,7 +587,14 @@ public class Utils{
 
 
     //PUT ADD ACTOR QUERIES ///////////////////////////////
+    public static void createActorNode(String name, String actorId, String age) {
+        String createQuery = "CREATE (a:actor {name: $name, actorId: $actorId, age: $age})";
+        try (Session session = driver.session()) {
+            session.run(createQuery, Values.parameters("name", name, "actorId", actorId, "age", age));
+        } 
+    }
     
+    ///FEATURE GET REQUEST
     public static StatementResult getActorsByAge(String ageStr) {
     	 
         String query = "MATCH (a:actor {age: $age}) RETURN a.name AS actorName";
@@ -596,13 +603,9 @@ public class Utils{
             return session.run(query, Values.parameters("age", ageStr));
         }
     }
+    ///////////////////////////
 
-    public static void createActorNode(String name, String actorId, String age) {
-        String createQuery = "CREATE (a:actor {name: $name, actorId: $actorId, age: $age})";
-        try (Session session = driver.session()) {
-            session.run(createQuery, Values.parameters("name", name, "actorId", actorId, "age", age));
-        } 
-    }
+    
     
     //PUT ADD MOVIE QUERIES
     
@@ -692,30 +695,6 @@ public class Utils{
         }
     public static void sendResponseCode(HttpExchange request, int code) throws IOException {
         String responseMessage = null;
-        switch (code) {
-            case 200:
-                responseMessage = "200 OK";
-                break;
-            case 400:
-                responseMessage = "400 BAD REQUEST";
-                break;
-            case 404:
-                responseMessage = "404 NOT FOUND";
-                break;
-            case 500:
-                responseMessage = "500 INTERNAL SERVER ERROR";
-                break;
-            default:
-                responseMessage = "NEW ERROR DETECTED";
-                break;
-        }
-        request.sendResponseHeaders(code, responseMessage.length());
-        OutputStream os = request.getResponseBody();
-        os.write(responseMessage.getBytes());
-        os.close();
-    }
-    
-    public static void sendGETResponseCode(HttpExchange request, int code, String responseMessage) throws IOException {
         switch (code) {
             case 200:
                 responseMessage = "200 OK";
