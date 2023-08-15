@@ -232,10 +232,22 @@ getActorPass
     Log    ${resp.content}
     Should Be Equal As Strings    ${resp.content}    {"actorId":"tom","name":"Tom Hanks","movies":["forrest"]}
 
+getActorPass2
+    ${headers}=    Create Dictionary    Content-Type=application/json
+    ${params}=    Create Dictionary    actorId=Merril
+    ${resp}=    GET On Session    localhost    /api/v1/getActor    params=${params}    headers=${headers}    expected_status=200
+    Log    ${resp.content}
+    Should Be Equal As Strings    ${resp.content}    {"actorId":"Merril","name":"Merril Streep","movies":[]}
+
 getActorFail
     ${headers}=    Create Dictionary    Content-Type=application/json
     ${params}=    Create Dictionary    name=Tom Hanks
     ${resp}=    GET On Session    localhost    /api/v1/getActor    params=${params}    headers=${headers}    expected_status=400
+
+addMoviePassUnconnected
+    ${headers}=    Create Dictionary    Content-Type=application/json
+    ${params}=    Create Dictionary    name=Avengers    movieId=mcu
+    ${resp}=    PUT On Session    localhost    /api/v1/addMovie    json=${params}    headers=${headers}    expected_status=200    
 
 getMoviePass
     ${headers}=    Create Dictionary    Content-Type=application/json
@@ -243,6 +255,13 @@ getMoviePass
     ${resp}=    GET On Session    localhost    /api/v1/getMovie    params=${params}    headers=${headers}    expected_status=200
     Log    ${resp.content}
     Should Be Equal As Strings    ${resp.content}    {"movieId":"forrest","name":"Forrest Gump","actors":["tom"]}
+
+getMoviePass2
+    ${headers}=    Create Dictionary    Content-Type=application/json
+    ${params}=    Create Dictionary    movieId=mcu
+    ${resp}=    GET On Session    localhost    /api/v1/getMovie    params=${params}    headers=${headers}    expected_status=200
+    Log    ${resp.content}
+    Should Be Equal As Strings    ${resp.content}    {"movieId":"mcu","name":"Avengers","actors":[]}
 
 getMovieFail
     ${headers}=    Create Dictionary    Content-Type=application/json
